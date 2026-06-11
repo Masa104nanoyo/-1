@@ -563,14 +563,33 @@ const CARRIER_TRACK = {
   'DHL':            'https://www.dhl.com/jp-ja/home/tracking.html?tracking-id=',
 };
 
+// ─── 明細テーブル定数（stateより前に定義必須） ────────────
+const FIXED_LEFT_DEF  = ['区分','品番','品名','カラー'];
+const FIXED_RIGHT_DEF = ['合計','備考'];
+const INIT_ROWS_DEF   = 10;
+const INIT_SIZES_DEF  = ['S','M','L','XL','XXL','F'];
+
+function newRow() {
+  return { fixed: new Array(FIXED_LEFT_DEF.length).fill(''), sizes: [], biko: '' };
+}
+
+function initMeisai() {
+  state.meisaiCols = [...INIT_SIZES_DEF];
+  state.meisaiRows = Array.from({ length: INIT_ROWS_DEF }, () => {
+    const r = newRow();
+    r.sizes = new Array(INIT_SIZES_DEF.length).fill('');
+    return r;
+  });
+}
+
 // ─── アプリ状態 ──────────────────────────────────────────
 let state = {
   gasUrl:    localStorage.getItem('rl_gas_url') || '',
   records:   [],
   contacts:  [],
   staff:     [],
-  meisaiCols: [...INIT_SIZES],   // サイズ列（可変）
-  meisaiRows: [],               // { fixed:[], sizes:[], biko:'' }
+  meisaiCols: ['S','M','L','XL','XXL','F'],  // サイズ列（可変）
+  meisaiRows: [],                              // { fixed:[], sizes:[], biko:'' }
   currentRecordId: null,
   importData: [],
 };
@@ -599,14 +618,6 @@ function setTodayDate() {
   const m = String(d.getMonth()+1).padStart(2,'0');
   const day = String(d.getDate()).padStart(2,'0');
   document.getElementById('slip-date').value = `${y}-${m}-${day}`;
-}
-
-function initMeisai() {
-  state.meisaiCols = [...INIT_SIZES];
-  state.meisaiRows = Array.from({ length: INIT_ROWS }, () => newRow()).map(r => {
-    r.sizes = new Array(INIT_SIZES.length).fill('');
-    return r;
-  });
 }
 
 // ─── タブ ────────────────────────────────────────────────
@@ -713,10 +724,8 @@ function updateDataLists() {
 
 // ─── 明細テーブル ────────────────────────────────────────
 // 固定列: No / 区分 / 品番 / 品名 / カラー │ サイズ列(可変) │ 合計 / 備考
-const FIXED_LEFT  = ['区分','品番','品名','カラー'];
-const FIXED_RIGHT = ['合計','備考'];
-const INIT_ROWS   = 10;
-const INIT_SIZES  = ['S','M','L','XL','XXL','F'];
+// ─── 明細テーブル ────────────────────────────────────────
+// 固定列: No / 区分 / 品番 / 品名 / カラー │ サイズ列(可変) │ 合計 / 備考
 
 function renderMeisai() {
   const sizes = state.meisaiCols; // サイズ列名配列
@@ -728,7 +737,7 @@ function renderMeisai() {
   // ── ヘッダー ──
   head.innerHTML = '<tr>' +
     `<th class="col-no">No.</th>` +
-    FIXED_LEFT.map(c => `<th class="${colClass(c)}">${c}</th>`).join('') +
+    FIXED_LEFT_DEF.map(c => `<th class="${colClass(c)}">${c}</th>`).join('') +
     sizes.map((s, si) =>
       `<th class="col-size">
         <div class="size-col-head">
@@ -745,7 +754,7 @@ function renderMeisai() {
     const total = calcRowTotal(row, sizes.length);
     return '<tr>' +
       `<td class="col-no-cell">${ri + 1}</td>` +
-      FIXED_LEFT.map((c, ci) =>
+      FIXED_LEFT_DEF.map((c, ci) =>
         `<td><input type="text" class="left" value="${esc(row.fixed[ci]||'')}"
           oninput="state.meisaiRows[${ri}].fixed[${ci}]=this.value"></td>`
       ).join('') +
@@ -770,7 +779,7 @@ function renderMeisai() {
 
   foot.innerHTML = '<tr class="meisai-total-row">' +
     `<td class="col-no-cell" style="text-align:center">合計</td>` +
-    FIXED_LEFT.map(() => '<td></td>').join('') +
+    FIXED_LEFT_DEF.map(() => '<td></td>').join('') +
     sizeColTotals.map(v => `<td style="text-align:center;padding:5px 4px">${v}</td>`).join('') +
     `<td class="col-total" style="padding:5px 4px;font-weight:700">${grandTotal || ''}</td>` +
     '<td></td>' +
@@ -800,7 +809,7 @@ function onSizeInput(ri, si, val) {
   // 合計・フッター更新（再レンダリングなしで軽量更新）
   const total = calcRowTotal(state.meisaiRows[ri], state.meisaiCols.length);
   const tds = document.getElementById('meisai-body').rows[ri].cells;
-  const totalCell = tds[1 + FIXED_LEFT.length + state.meisaiCols.length];
+  const totalCell = tds[1 + FIXED_LEFT_DEF.length + state.meisaiCols.length];
   if (totalCell) totalCell.querySelector('input').value = total || '';
   updateFooterTotals();
 }
@@ -809,7 +818,7 @@ function updateFooterTotals() {
   const foot = document.getElementById('meisai-foot');
   if (!foot.rows[0]) return;
   const cells = foot.rows[0].cells;
-  const offset = 1 + FIXED_LEFT.length; // No + 固定左列
+  const offset = 1 + FIXED_LEFT_DEF.length; // No + 固定左列
   state.meisaiCols.forEach((s, si) => {
     const sum = state.meisaiRows.reduce((acc, row) =>
       acc + (parseFloat(row.sizes[si]) || 0), 0);
@@ -818,10 +827,6 @@ function updateFooterTotals() {
   const grand = state.meisaiRows.reduce((acc, row) =>
     acc + calcRowTotal(row, state.meisaiCols.length), 0);
   cells[offset + state.meisaiCols.length].textContent = grand || '';
-}
-
-function newRow() {
-  return { fixed: new Array(FIXED_LEFT.length).fill(''), sizes: [], biko: '' };
 }
 
 function addMeisaiRow() {
@@ -1216,9 +1221,9 @@ function editRecord() {
   document.getElementById('slip-staff').value    = r.staff;
   document.getElementById('slip-notes').value    = r.notes;
   const items = JSON.parse(r.items || '{"cols":[],"rows":[]}');
-  state.meisaiCols = items.cols && items.cols.length ? items.cols : [...INIT_SIZES];
+  state.meisaiCols = items.cols && items.cols.length ? items.cols : [...INIT_SIZES_DEF];
   state.meisaiRows = items.rows && items.rows.length ? items.rows :
-    Array.from({ length: INIT_ROWS }, () => ({ fixed: new Array(FIXED_LEFT.length).fill(''), sizes: new Array(state.meisaiCols.length).fill(''), biko: '' }));
+    Array.from({ length: INIT_ROWS }, () => ({ fixed: new Array(FIXED_LEFT_DEF.length).fill(''), sizes: new Array(state.meisaiCols.length).fill(''), biko: '' }));
   renderMeisai();
   switchTab('issue');
   document.querySelectorAll('.tab-btn')[0].classList.add('active');
