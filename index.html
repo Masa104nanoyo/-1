@@ -939,8 +939,14 @@ function localNextNumber() {
 // ─── PDF生成（フォントを毎回登録してバグ防止） ──────────────
 async function buildPdf(record) {
   const { jsPDF } = window.jspdf;
+
+  // サイズ列が多い場合は横向き（ランドスケープ）に自動切替
+  const _items = JSON.parse(record.items || '{"cols":[],"rows":[]}');
+  const _sizeCount = (_items.cols || []).length;
+  const _landscape = _sizeCount >= 7;
+
   // 毎回新しいインスタンスでフォントを登録
-  const doc = new jsPDF({ orientation:'p', unit:'mm', format:'a4' });
+  const doc = new jsPDF({ orientation: _landscape ? 'l' : 'p', unit:'mm', format:'a4' });
 
   // IPAGothicフォント（Base64）を毎回登録
   await loadFont(doc);
@@ -948,7 +954,8 @@ async function buildPdf(record) {
   doc.setFont('IPAGothic');
 
   const margin = 15;
-  const pageW  = 210;
+  const pageW  = _landscape ? 297 : 210;  // A4横=297mm / 縦=210mm
+  const pageH  = _landscape ? 210 : 297;
   let y = 20;
 
   // ヘッダー（入日記デザイン：白背景＋ロゴ）
@@ -1023,22 +1030,60 @@ async function buildPdf(record) {
     doc.text('明細', margin+2, y+5.5);
     y += 12;
 
-    // 列幅設定
-    const fixedW  = [8, 16, 22, 28, 18]; // No/区分/品番/品名/カラー
-    const sizeW   = Math.min(12, Math.max(8, Math.floor((pageW - margin*2 - fixedW.reduce((a,b)=>a+b,0) - 14 - 20) / Math.max(sizeCols.length, 1))));
-    const totalW  = 14;
-    const bikoW   = 20;
+    // ── 列幅設定（固定列を拡大、サイズ列は残り幅で可変） ──
+    const tableW  = pageW - margin * 2;            // テーブル全幅
+    const noW     = 8;
+    const kubunW  = 12;
+    const hinbanW = 28;   // 品番（拡大）
+    const hinmeiW = 34;   // 品名（拡大）
+    const colorW  = 22;   // カラー（拡大）
+    const totalW  = 11;
+    const bikoW   = 19;
+    const fixedSum = noW + kubunW + hinbanW + hinmeiW + colorW + totalW + bikoW;
+    // サイズ列は残り幅を均等割り（最小7mm／最大16mm）
+    const sizeW   = sizeCols.length > 0
+      ? Math.min(16, Math.max(7, (tableW - fixedSum) / sizeCols.length))
+      : 0;
     const allCols = ['No.', '区分', '品番', '品名', 'カラー', ...sizeCols, '合計', '備考'];
-    const allW    = [...fixedW, ...sizeCols.map(() => sizeW), totalW, bikoW];
+    const allW    = [noW, kubunW, hinbanW, hinmeiW, colorW, ...sizeCols.map(() => sizeW), totalW, bikoW];
+
+    // セル内に文字を収めて描画するヘルパー（自動縮小＋クリップ）
+    function drawCell(text, cx, cellW, cy, align) {
+      text = String(text == null ? '' : text);
+      if (!text) return;
+      const pad = 1.2;
+      const maxW = cellW - pad * 2;
+      let fs = 8;
+      doc.setFontSize(fs);
+      // 幅に収まるまでフォントを縮小（下限5pt）
+      while (doc.getTextWidth(text) > maxW && fs > 5) {
+        fs -= 0.5;
+        doc.setFontSize(fs);
+      }
+      // それでも長い場合は末尾を「…」で省略
+      let out = text;
+      if (doc.getTextWidth(out) > maxW) {
+        while (out.length > 1 && doc.getTextWidth(out + '…') > maxW) {
+          out = out.slice(0, -1);
+        }
+        out += '…';
+      }
+      if (align === 'left') {
+        doc.text(out, cx + pad, cy, { align: 'left' });
+      } else {
+        doc.text(out, cx + cellW / 2, cy, { align: 'center' });
+      }
+      doc.setFontSize(8); // 元に戻す
+    }
 
     // ヘッダー行
     doc.setFillColor(241, 245, 249);
-    doc.rect(margin, y-5, pageW-margin*2, 7, 'F');
+    doc.rect(margin, y-5, tableW, 7, 'F');
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
     let x = margin;
     allCols.forEach((col, i) => {
-      doc.text(col, x + allW[i]/2, y, { align: 'center' });
+      drawCell(col, x, allW[i], y, 'center');
       x += allW[i];
     });
     doc.setDrawColor(203, 213, 225);
@@ -1049,17 +1094,26 @@ async function buildPdf(record) {
     doc.setTextColor(30, 41, 59);
     allRows.forEach((row, ri) => {
       const total = (row.sizes || []).reduce((acc, v) => acc + (parseFloat(v) || 0), 0);
-      const vals = [String(ri+1), ...(row.fixed||[]), ...(row.sizes||[]).map(v => v||''), total||'', row.biko||''];
+      // 各列の値と揃え方（品番/品名/カラー/備考は左揃え、その他は中央）
+      const cells = [
+        { v: String(ri+1),        a: 'center' },
+        { v: (row.fixed||[])[0],  a: 'center' },  // 区分
+        { v: (row.fixed||[])[1],  a: 'left'   },  // 品番
+        { v: (row.fixed||[])[2],  a: 'left'   },  // 品名
+        { v: (row.fixed||[])[3],  a: 'left'   },  // カラー
+        ...(row.sizes||[]).map(v => ({ v: v||'', a: 'center' })),
+        { v: total||'',           a: 'center' },
+        { v: row.biko||'',        a: 'left'   },
+      ];
       x = margin;
-      doc.setFontSize(8);
-      vals.forEach((v, i) => {
-        doc.text(String(v), x + allW[i]/2, y, { align: 'center' });
+      cells.forEach((cell, i) => {
+        drawCell(cell.v, x, allW[i], y, cell.a);
         x += allW[i];
       });
       doc.setDrawColor(226, 232, 240);
       doc.line(margin, y+2, pageW-margin, y+2);
       y += 7;
-      if (y > 270) { doc.addPage(); y = 20; }
+      if (y > pageH - 27) { doc.addPage(); y = 20; }
     });
 
     // 合計行
@@ -1073,9 +1127,9 @@ async function buildPdf(record) {
       return sum || '';
     }), grandTotal || '', ''];
     doc.setFillColor(241, 245, 249);
-    doc.rect(margin, y-5, pageW-margin*2, 7, 'F');
+    doc.rect(margin, y-5, tableW, 7, 'F');
     totalVals.forEach((v, i) => {
-      doc.text(String(v), x + allW[i]/2, y, { align: 'center' });
+      drawCell(v, x, allW[i], y, 'center');
       x += allW[i];
     });
     y += 10;
@@ -1101,7 +1155,7 @@ async function buildPdf(record) {
   }
 
   // フッター
-  const footerY = 285;
+  const footerY = pageH - 12;
   doc.setDrawColor(203, 213, 225);
   doc.line(margin, footerY, pageW-margin, footerY);
   doc.setFontSize(8);
