@@ -1302,11 +1302,11 @@ function renderHistory() {
     if (!q) return true;
 
     // 基本情報の検索（伝票番号・取引先・担当者・運送会社・備考）
-    if ((r.slipNumber||'').toLowerCase().includes(q) ||
-        (r.destination||'').toLowerCase().includes(q) ||
-        (r.staff||'').toLowerCase().includes(q) ||
-        (r.carrier||'').toLowerCase().includes(q) ||
-        (r.notes||'').toLowerCase().includes(q)) {
+    if (String(r.slipNumber || '').toLowerCase().includes(q) ||
+        String(r.destination || '').toLowerCase().includes(q) ||
+        String(r.staff || '').toLowerCase().includes(q) ||
+        String(r.carrier || '').toLowerCase().includes(q) ||
+        String(r.notes || '').toLowerCase().includes(q)) {
       return true;
     }
 
