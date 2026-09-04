@@ -1286,13 +1286,31 @@ function clearSearch() {
 function renderHistory() {
   const q = (document.getElementById('search-input')?.value || '').toLowerCase();
   const list = document.getElementById('history-list');
-  const filtered = state.records.filter(r =>
-    !q ||
-    (r.slipNumber||'').toLowerCase().includes(q) ||
-    (r.destination||'').toLowerCase().includes(q) ||
-    (r.staff||'').toLowerCase().includes(q) ||
-    (r.carrier||'').toLowerCase().includes(q)
-  );
+  const filtered = state.records.filter(r => {
+    if (!q) return true;
+
+    // 基本情報の検索（伝票番号・取引先・担当者・運送会社・備考）
+    if ((r.slipNumber||'').toLowerCase().includes(q) ||
+        (r.destination||'').toLowerCase().includes(q) ||
+        (r.staff||'').toLowerCase().includes(q) ||
+        (r.carrier||'').toLowerCase().includes(q) ||
+        (r.notes||'').toLowerCase().includes(q)) {
+      return true;
+    }
+
+    // 商品情報（items）の検索（区分・品番・品名・色・備考など）
+    try {
+      const items = JSON.parse(r.items || '{"cols":[],"rows":[]}');
+      if (items.rows && Array.isArray(items.rows)) {
+        return items.rows.some(row =>
+          (row.fixed || []).some(f => (f||'').toLowerCase().includes(q)) ||
+          (row.biko||'').toLowerCase().includes(q)
+        );
+      }
+    } catch (e) {}
+
+    return false;
+  });
 
   if (filtered.length === 0) {
     list.innerHTML = '<p style="color:var(--rl-sub);text-align:center;padding:32px">履歴がありません</p>';
