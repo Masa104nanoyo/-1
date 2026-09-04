@@ -637,6 +637,16 @@ function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('panel-'+name).classList.add('active');
   event.target.classList.add('active');
+
+  if (name === 'history') {
+    document.getElementById('search-input').value = '';
+    renderHistory();
+  } else if (name === 'contacts') {
+    document.getElementById('contact-search').value = '';
+    renderContacts();
+  } else if (name === 'staff') {
+    renderStaff();
+  }
 }
 
 // ─── クラウドバッジ ──────────────────────────────────────
