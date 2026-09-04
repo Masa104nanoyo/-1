@@ -623,6 +623,17 @@ window.addEventListener('DOMContentLoaded', async () => {
   renderContacts();
   renderStaff();
   updateDataLists();
+
+  // 検索ボタンのイベントリスナー登録
+  const searchBtn = document.querySelector('button[onclick="searchHistory()"]');
+  if (searchBtn) {
+    searchBtn.addEventListener('click', searchHistory);
+  }
+
+  const clearBtn = document.querySelector('button[onclick="clearSearch()"]');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', clearSearch);
+  }
 });
 
 function setTodayDate() {
