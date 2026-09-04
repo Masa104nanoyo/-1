@@ -1313,7 +1313,8 @@ function renderHistory() {
   });
 
   if (filtered.length === 0) {
-    list.innerHTML = '<p style="color:var(--rl-sub);text-align:center;padding:32px">履歴がありません</p>';
+    const msg = q ? '検索結果はありません' : '履歴がありません';
+    list.innerHTML = `<p style="color:var(--rl-sub);text-align:center;padding:32px">${msg}</p>`;
     return;
   }
 
