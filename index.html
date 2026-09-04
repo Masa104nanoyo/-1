@@ -309,7 +309,9 @@ textarea{resize:vertical;min-height:70px}
     <div class="card">
       <div class="card-title">発行履歴</div>
       <div class="history-search">
-        <input type="text" id="search-input" placeholder="伝票番号・取引先・担当者で検索…" oninput="renderHistory()">
+        <input type="text" id="search-input" placeholder="伝票番号・取引先・担当者で検索…">
+        <button class="btn btn-primary btn-sm" onclick="searchHistory()">🔍 検索</button>
+        <button class="btn btn-outline btn-sm" onclick="clearSearch()">✕ クリア</button>
         <button class="btn btn-outline btn-sm" onclick="syncFromCloud()">🔄 更新</button>
       </div>
       <div id="history-list"></div>
@@ -1268,6 +1270,16 @@ function resetForm() {
   setTodayDate();
   initMeisai();
   renderMeisai();
+}
+
+// ─── 履歴検索 ────────────────────────────────────────────
+function searchHistory() {
+  renderHistory();
+}
+
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  renderHistory();
 }
 
 // ─── 履歴レンダリング ────────────────────────────────────
