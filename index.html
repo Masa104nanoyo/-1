@@ -208,6 +208,7 @@ textarea{resize:vertical;min-height:70px}
 <nav id="tab-nav">
   <button class="tab-btn active" onclick="switchTab('issue')">📝 新規発行</button>
   <button class="tab-btn" onclick="switchTab('history')">📋 履歴</button>
+  <button class="tab-btn" onclick="switchTab('sales-summary')">📊 売上集計</button>
   <button class="tab-btn" onclick="switchTab('contacts')">🏢 取引先マスタ</button>
   <button class="tab-btn" onclick="switchTab('staff')">👤 社員マスタ</button>
 </nav>
@@ -258,6 +259,15 @@ textarea{resize:vertical;min-height:70px}
         <div class="form-group">
           <label>追跡番号</label>
           <input type="text" id="slip-tracking" placeholder="伝票番号・追跡番号">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="slip-is-sales">
+            <span>売上伝票</span>
+          </label>
         </div>
       </div>
 
@@ -352,6 +362,23 @@ textarea{resize:vertical;min-height:70px}
         <thead><tr><th>氏名</th><th>メール</th><th>有効</th><th>操作</th></tr></thead>
         <tbody id="staff-tbody"></tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- ===== 売上集計パネル ===== -->
+  <div class="tab-panel" id="panel-sales-summary">
+    <div class="card">
+      <div class="card-title">売上集計</div>
+      <div class="master-toolbar">
+        <label>
+          集計月:
+          <input type="month" id="sales-month" value="2026-09" style="padding:6px;border:1px solid var(--rl-border);border-radius:4px">
+        </label>
+        <button class="btn btn-primary btn-sm" onclick="loadSalesSummary()">📊 集計</button>
+        <button class="btn btn-success btn-sm" onclick="exportSalesCSV()">📥 CSV エクスポート</button>
+        <button class="btn btn-outline btn-sm" onclick="exportSalesPDF()">📄 PDF 出力</button>
+      </div>
+      <div id="sales-summary-content" style="margin-top:20px"></div>
     </div>
   </div>
 
@@ -903,6 +930,7 @@ async function issueSlip() {
   const track   = document.getElementById('slip-tracking').value.trim();
   const staff   = document.getElementById('slip-staff').value.trim();
   const notes   = document.getElementById('slip-notes').value.trim();
+  const isSales = document.getElementById('slip-is-sales').checked;
 
   if (!date || !dest || !staff) {
     showToast('日付・お届け先・担当者は必須です', 'err');
@@ -930,7 +958,9 @@ async function issueSlip() {
     trackingNumber: track,
     staff,
     notes,
-    items:         JSON.stringify({ cols: state.meisaiCols, rows: state.meisaiRows }),    createdAt:     new Date().toISOString(),
+    slipType:      isSales ? 'sales' : 'move',
+    items:         JSON.stringify({ cols: state.meisaiCols, rows: state.meisaiRows }),
+    createdAt:     new Date().toISOString(),
   };
 
   // クラウド保存
