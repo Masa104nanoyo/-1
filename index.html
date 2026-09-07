@@ -1614,6 +1614,145 @@ async function executeImport() {
   if (!state.gasUrl) showToast(`✅ ${added}件をインポートしました`, 'ok');
 }
 
+// ─── 売上集計 ──────────────────────────────────────────
+function loadSalesSummary() {
+  const monthStr = document.getElementById('sales-month').value; // YYYY-MM
+  if (!monthStr) {
+    showToast('集計月を選択してください', 'err');
+    return;
+  }
+
+  const [year, month] = monthStr.split('-');
+  const startDate = new Date(year, parseInt(month) - 1, 1).toISOString().split('T')[0];
+  const endDate = new Date(year, parseInt(month), 0).toISOString().split('T')[0];
+
+  // 売上伝票のみをフィルタ
+  const salesRecords = state.records.filter(r => r.slipType === 'sales' && r.date >= startDate && r.date <= endDate);
+
+  // 取引先ごとに集計
+  const summary = {};
+  salesRecords.forEach(r => {
+    const dest = r.destination || '不明';
+    if (!summary[dest]) {
+      summary[dest] = { count: 0, quantity: 0, records: [] };
+    }
+    summary[dest].count++;
+    summary[dest].records.push(r);
+
+    // 数量を集計
+    try {
+      const items = JSON.parse(r.items || '{"cols":[],"rows":[]}');
+      if (items.rows) {
+        items.rows.forEach(row => {
+          if (row.sizes) {
+            row.sizes.forEach(s => {
+              if (s && !isNaN(s)) summary[dest].quantity += parseInt(s);
+            });
+          }
+        });
+      }
+    } catch (e) {}
+  });
+
+  // 表示
+  let html = `<h3>${year}年${month}月の売上集計</h3>`;
+  html += `<p>対象伝票数: ${salesRecords.length}件 | 取引先数: ${Object.keys(summary).length}件</p>`;
+  html += '<table style="width:100%;border-collapse:collapse;margin-top:10px">';
+  html += '<thead><tr style="background:#f0f0f0"><th style="border:1px solid #ccc;padding:8px;text-align:left">取引先</th><th style="border:1px solid #ccc;padding:8px;text-align:center">伝票数</th><th style="border:1px solid #ccc;padding:8px;text-align:center">合計数量</th></tr></thead>';
+  html += '<tbody>';
+
+  Object.entries(summary).forEach(([dest, data]) => {
+    html += `<tr><td style="border:1px solid #ccc;padding:8px">${dest}</td><td style="border:1px solid #ccc;padding:8px;text-align:center">${data.count}</td><td style="border:1px solid #ccc;padding:8px;text-align:center">${data.quantity}</td></tr>`;
+  });
+
+  html += '</tbody></table>';
+  document.getElementById('sales-summary-content').innerHTML = html;
+  state.salesSummary = { month: monthStr, summary, records: salesRecords };
+}
+
+function exportSalesCSV() {
+  if (!state.salesSummary) {
+    showToast('先に「集計」ボタンで集計してください', 'err');
+    return;
+  }
+
+  const { month, summary } = state.salesSummary;
+  let csv = '﻿'; // BOM
+  csv += `${month}年月の売上集計\n\n`;
+  csv += '取引先,伝票数,合計数量\n';
+
+  Object.entries(summary).forEach(([dest, data]) => {
+    csv += `"${dest}",${data.count},${data.quantity}\n`;
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `売上集計_${month}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast('CSVをダウンロードしました', 'ok');
+}
+
+function exportSalesPDF() {
+  if (!state.salesSummary) {
+    showToast('先に「集計」ボタンで集計してください', 'err');
+    return;
+  }
+
+  const { month, summary } = state.salesSummary;
+  const { jsPDF } = window;
+  const doc = new jsPDF();
+
+  // フォント読み込み
+  if (window.LOGO_B64 && !doc.getFontList()['IPA']) {
+    loadFont(doc);
+  }
+
+  doc.setFontSize(16);
+  doc.text(`${month}年月 売上集計`, 20, 20);
+
+  let y = 30;
+  doc.setFontSize(10);
+  doc.text('取引先別売上一覧', 20, y);
+  y += 8;
+
+  doc.setFontSize(9);
+  const headers = ['取引先', '伝票数', '合計数量'];
+  const colWidths = [100, 40, 40];
+  let x = 20;
+
+  // ヘッダー
+  headers.forEach((h, i) => {
+    doc.rect(x, y, colWidths[i], 7);
+    doc.text(h, x + 2, y + 5);
+    x += colWidths[i];
+  });
+
+  y += 7;
+
+  // データ行
+  Object.entries(summary).forEach(([dest, data]) => {
+    if (y > 270) {
+      doc.addPage();
+      y = 20;
+    }
+
+    x = 20;
+    const values = [dest, data.count.toString(), data.quantity.toString()];
+    values.forEach((v, i) => {
+      doc.rect(x, y, colWidths[i], 7);
+      doc.text(v, x + 2, y + 5);
+      x += colWidths[i];
+    });
+    y += 7;
+  });
+
+  doc.save(`売上集計_${month}.pdf`);
+  showToast('PDFをダウンロードしました', 'ok');
+}
+
 // ─── 社員マスタ ──────────────────────────────────────────
 function renderStaff() {
   const tbody = document.getElementById('staff-tbody');
