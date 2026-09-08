@@ -377,6 +377,7 @@ textarea{resize:vertical;min-height:70px}
         <button class="btn btn-primary btn-sm" onclick="loadSalesSummary()">📊 集計</button>
         <button class="btn btn-success btn-sm" onclick="exportSalesCSV()">📥 CSV エクスポート</button>
         <button class="btn btn-outline btn-sm" onclick="exportSalesPDF()">📄 PDF 出力</button>
+        <button class="btn btn-info btn-sm" onclick="exportMonthlyRecordsPDF()">📋 一括PDF</button>
       </div>
       <div id="sales-summary-content" style="margin-top:20px"></div>
     </div>
@@ -863,7 +864,7 @@ function calcRowTotal(row, sizeCount) {
   for (let i = 0; i < sizeCount; i++) {
     sum += parseFloat(row.sizes[i]) || 0;
   }
-  return sum || 0;
+  return sum ? Math.round(sum * 10) / 10 : 0;
 }
 
 function onSizeInput(ri, si, val) {
@@ -884,11 +885,13 @@ function updateFooterTotals() {
   state.meisaiCols.forEach((s, si) => {
     const sum = state.meisaiRows.reduce((acc, row) =>
       acc + (parseFloat(row.sizes[si]) || 0), 0);
-    cells[offset + si].textContent = sum || '';
+    const rounded = sum ? Math.round(sum * 10) / 10 : '';
+    cells[offset + si].textContent = rounded || '';
   });
   const grand = state.meisaiRows.reduce((acc, row) =>
     acc + calcRowTotal(row, state.meisaiCols.length), 0);
-  cells[offset + state.meisaiCols.length].textContent = grand || '';
+  const grandRounded = grand ? Math.round(grand * 10) / 10 : '';
+  cells[offset + state.meisaiCols.length].textContent = grandRounded || '';
 }
 
 function addMeisaiRow() {
@@ -1695,20 +1698,18 @@ function exportSalesCSV() {
   showToast('CSVをダウンロードしました', 'ok');
 }
 
-function exportSalesPDF() {
+async function exportSalesPDF() {
   if (!state.salesSummary) {
     showToast('先に「集計」ボタンで集計してください', 'err');
     return;
   }
 
   const { month, summary } = state.salesSummary;
-  const { jsPDF } = window;
+  const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
 
-  // フォント読み込み
-  if (window.LOGO_B64 && !doc.getFontList()['IPA']) {
-    loadFont(doc);
-  }
+  await loadFont(doc);
+  doc.setFont('IPAGothic');
 
   doc.setFontSize(16);
   doc.text(`${month}年月 売上集計`, 20, 20);
@@ -1723,16 +1724,18 @@ function exportSalesPDF() {
   const colWidths = [100, 40, 40];
   let x = 20;
 
-  // ヘッダー
+  doc.setDrawColor(200, 200, 200);
+  doc.setFillColor(240, 240, 240);
+
   headers.forEach((h, i) => {
-    doc.rect(x, y, colWidths[i], 7);
+    doc.rect(x, y, colWidths[i], 7, 'FD');
     doc.text(h, x + 2, y + 5);
     x += colWidths[i];
   });
 
   y += 7;
+  doc.setFillColor(255, 255, 255);
 
-  // データ行
   Object.entries(summary).forEach(([dest, data]) => {
     if (y > 270) {
       doc.addPage();
@@ -1751,6 +1754,96 @@ function exportSalesPDF() {
 
   doc.save(`売上集計_${month}.pdf`);
   showToast('PDFをダウンロードしました', 'ok');
+}
+
+async function exportMonthlyRecordsPDF() {
+  if (!state.salesSummary) {
+    showToast('先に「集計」ボタンで集計してください', 'err');
+    return;
+  }
+
+  const { month, records } = state.salesSummary;
+  if (!records || records.length === 0) {
+    showToast('該当する伝票がありません', 'err');
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+
+  await loadFont(doc);
+  doc.setFont('IPAGothic');
+
+  let y = 20;
+  const margin = 10;
+  const pageW = 210;
+  const pageH = 297;
+
+  records.forEach((record, idx) => {
+    if (idx > 0) {
+      doc.addPage();
+      y = 20;
+    }
+
+    doc.setFontSize(14);
+    doc.text(`${record.destination} 御中`, margin, y);
+    y += 8;
+
+    doc.setFontSize(10);
+    const info = [
+      `伝票番号: ${record.slipNumber}`,
+      `日付: ${record.date}`,
+      `担当者: ${record.staff}`,
+      `運送会社: ${record.carrier}`
+    ];
+    info.forEach(line => {
+      doc.text(line, margin, y);
+      y += 6;
+    });
+    y += 4;
+
+    doc.setFontSize(9);
+    doc.text('明細', margin, y);
+    y += 6;
+
+    try {
+      const items = JSON.parse(record.items || '{"cols":[],"rows":[]}');
+      if (items.rows && items.rows.length > 0) {
+        const cols = items.cols || [];
+        let x = margin;
+        const colW = (pageW - 2 * margin) / (4 + cols.length);
+
+        doc.setDrawColor(200, 200, 200);
+        const headers = ['区分', '品番', '品名', 'カラー', ...cols];
+        headers.forEach(h => {
+          doc.text(String(h).substring(0, 3), x, y);
+          x += colW;
+        });
+        y += 5;
+
+        items.rows.forEach(row => {
+          if (y > pageH - 20) {
+            doc.addPage();
+            y = 20;
+          }
+          x = margin;
+          const rowData = [row.fixed[0], row.fixed[1], row.fixed[2], row.fixed[3], ...(row.sizes || [])];
+          rowData.forEach((v, i) => {
+            const text = String(v || '').substring(0, 5);
+            doc.setFontSize(8);
+            doc.text(text, x, y);
+            x += colW;
+          });
+          y += 5;
+        });
+      }
+    } catch (e) {
+      console.error('明細解析エラー:', e);
+    }
+  });
+
+  doc.save(`入日記一括_${month}.pdf`);
+  showToast('一括PDFをダウンロードしました', 'ok');
 }
 
 // ─── 社員マスタ ──────────────────────────────────────────
