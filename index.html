@@ -1087,19 +1087,19 @@ async function buildPdf(record) {
     doc.text('明細', margin+2, y+5.5);
     y += 12;
 
-    // ── 列幅設定（固定列を拡大、サイズ列は残り幅で可変） ──
+    // ── 列幅設定（合計列と備考欄を固定、その他は残り幅で可変） ──
     const tableW  = pageW - margin * 2;            // テーブル全幅
     const noW     = 8;
     const kubunW  = 12;
     const hinbanW = 28;   // 品番（拡大）
     const hinmeiW = 34;   // 品名（拡大）
     const colorW  = 22;   // カラー（拡大）
-    const totalW  = 11;
-    const bikoW   = 19;
+    const totalW  = 14;   // 合計列（拡大して見切れ防止）
+    const bikoW   = 18;   // 備考欄
     const fixedSum = noW + kubunW + hinbanW + hinmeiW + colorW + totalW + bikoW;
-    // サイズ列は残り幅を均等割り（最小7mm／最大16mm）
+    // サイズ列は残り幅を均等割り（最小6mm／最大14mm）
     const sizeW   = sizeCols.length > 0
-      ? Math.min(16, Math.max(7, (tableW - fixedSum) / sizeCols.length))
+      ? Math.min(14, Math.max(6, (tableW - fixedSum) / sizeCols.length))
       : 0;
     const allCols = ['No.', '区分', '品番', '品名', 'カラー', ...sizeCols, '合計', '備考'];
     const allW    = [noW, kubunW, hinbanW, hinmeiW, colorW, ...sizeCols.map(() => sizeW), totalW, bikoW];
@@ -1176,13 +1176,15 @@ async function buildPdf(record) {
     // 合計行
     const grandTotal = allRows.reduce((acc, row) =>
       acc + (row.sizes||[]).reduce((a, v) => a + (parseFloat(v)||0), 0), 0);
+    const roundedGrandTotal = grandTotal ? Math.round(grandTotal * 10) / 10 : 0;
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
     x = margin;
     const totalVals = ['合計', '', '', '', '', ...sizeCols.map((s, si) => {
       const sum = allRows.reduce((acc, row) => acc + (parseFloat((row.sizes||[])[si])||0), 0);
-      return sum || '';
-    }), grandTotal || '', ''];
+      const roundedSum = sum ? Math.round(sum * 10) / 10 : '';
+      return roundedSum || '';
+    }), roundedGrandTotal || '', ''];
     doc.setFillColor(241, 245, 249);
     doc.rect(margin, y-5, tableW, 7, 'F');
     totalVals.forEach((v, i) => {
@@ -1270,20 +1272,22 @@ function openMailer(record) {
         .map((s, si) => row.sizes[si] ? `${s}:${row.sizes[si]}` : '')
         .filter(Boolean).join(' / ');
       const total = (row.sizes||[]).reduce((a,v)=>a+(parseFloat(v)||0),0);
+      const roundedTotal = total ? Math.round(total * 10) / 10 : 0;
       const parts = [
         `${i+1}.`,
         hinban ? `品番:${hinban}` : '',
         hinmei ? `品名:${hinmei}` : '',
         color  ? `カラー:${color}` : '',
         sizeParts,
-        total ? `計${total}点` : '',
+        roundedTotal ? `計${roundedTotal}点` : '',
         row.biko ? `(${row.biko})` : '',
       ].filter(Boolean);
       meisaiText += parts.join('　') + '\n';
     });
     const grand = dataRows.reduce((acc, row) =>
       acc + (row.sizes||[]).reduce((a,v)=>a+(parseFloat(v)||0),0), 0);
-    meisaiText += `合計数量: ${grand}点\n`;
+    const roundedGrand = grand ? Math.round(grand * 10) / 10 : 0;
+    meisaiText += `合計数量: ${roundedGrand}点\n`;
   }
 
   const bodyText =
